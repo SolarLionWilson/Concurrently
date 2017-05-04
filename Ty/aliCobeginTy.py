@@ -8,17 +8,19 @@
 # ID:848348
 import sys, string
 
-labelMax =5
-norw = 32 # number of reserved words (mod)
+labelMax = 5
+norw = 33  # number of reserved words (mod)
 txmax = 100  # length of identifier table
 nmax = 14  # max number of digits in number
 al = 10  # length of identifiers
 CXMAX = 500  # maximum allowed lines of assembly code
 STACKSIZE = 500
+MAXTHREADS = 50  # maximum amount of threads
 a = []
 chars = []
 rword = []
 table = []  # symbol table
+threadTable = []
 code = []  # code array
 stack = [0] * STACKSIZE  # interpreter stack
 global infile, outfile, ch, sym, id, num, linlen, kk, line, errorFlag, linelen, codeIndx, prevIndx, codeIndx0
@@ -35,6 +37,14 @@ class tableValue():
 		self.params = []
 		self.nest = 0
 
+class threadStruct():
+	def __init__(self,address,top,base,currentBase,position ,statLinks):
+		self.address = address
+		self.top = top
+		self.base = base
+		self.currentBase = currentBase
+		self.position = position
+		self.statLinks = statLinks
 
 # ----------commands to put in the array of assembly code-----------------------------------------------
 class Cmd():
@@ -78,6 +88,9 @@ def Base(statLinks, base):
 		statLinks -= 1
 	return b1
 
+
+def multiThreading(current):
+	return 0
 
 # -------------P-Code Interpreter-------------------------------------------------------
 def Interpret():
@@ -301,6 +314,7 @@ def error(num):
 		print>> outfile, "Must be procedure"
 	exit(0)
 
+
 # ---------------Alt Errors---------------------------------
 def altError(num):
 	print
@@ -308,6 +322,7 @@ def altError(num):
 		print >> outfile, "sym is not in First"
 	elif num == 2:
 		print >> outfile, "sym is not in Follow"
+
 
 # ---------GET CHARACTER FUNCTION-------------------------------------------------------------------
 def getch():
@@ -414,16 +429,17 @@ def enter(tx, k, level, dx):
 		table.pop()
 	if k == "const":
 		x = tableValue(id, k, level, "NULL", num)
-	elif k == "variable"  or k == "ref" or k == "val": #Added value and reference
+	elif k == "variable" or k == "ref" or k == "val":  # Added value and reference
 		x = tableValue(id, k, level, dx, "NULL")
 		dx += 1
 	elif k == "procedure":
 		x = tableValue(id, k, level, dx, "NULL")
-		#function added
+	# function added
 	elif k == "function":
 		x = tableValue(id, k, level, dx, "NULL")
 	table.append(x)
 	return dx
+
 
 # -------------Label Declaration-----------
 # TODO
@@ -438,6 +454,7 @@ def labeldeclaration(tx, level):
 			error(31)
 	else:
 		error(2)
+
 
 # --------------CONST DECLARATION---------------------------
 def constdeclaration(tx, level):
@@ -455,6 +472,7 @@ def constdeclaration(tx, level):
 			error(3)
 	else:
 		error(4)
+
 
 # -------------VARIABLE DECLARATION--------------------------------------
 def vardeclaration(tx, level, dx):  # moded
@@ -577,7 +595,7 @@ def block(tableIndex, level):
 			tmpSym = sym
 			getsym()
 			if sym == "ident":
-				if tmpSym == "FUNCTION": #added function and procedure
+				if tmpSym == "FUNCTION":  # added function and procedure
 					enter(tx, "function", level, codeIndx)
 				if tmpSym == "PROCEDURE":
 					enter(tx, "procedure", level, codeIndx)
@@ -592,7 +610,7 @@ def block(tableIndex, level):
 			t = 1
 		else:
 			t = 0
-	#fix the jump
+	# fix the jump
 	fixJmp(cx1, codeIndx)
 	if tx0 != 0:
 		table[tx0].adr = codeIndx
@@ -601,15 +619,17 @@ def block(tableIndex, level):
 	statement(tx[0], level)
 	gen("OPR", 0, 0)
 	printCode()
-	# took out follow
-	#	inFollow = 0
-	#	for x in blockFirst_Follow.follow:
-	#		if sym == x:
-	#			inFollow += 1
-	#	if inFollow == 0:
-	#		print >> outfile, "Block:"
-	#		altError(2)
-	# print code for this block
+
+
+# took out follow
+#	inFollow = 0
+#	for x in blockFirst_Follow.follow:
+#		if sym == x:
+#			inFollow += 1
+#	if inFollow == 0:
+#		print >> outfile, "Block:"
+#		altError(2)
+# print code for this block
 
 
 # --------------STATEMENT----------------------------------------
@@ -663,12 +683,12 @@ def statement(tx, level):
 		gen("JMP", 0, table[i].adr)
 		getsym()
 
-	if sym == "ident" or sym == "FUNCTION"  or sym == "REF" or sym == "VAL":  #added ref and val
+	if sym == "ident" or sym == "FUNCTION" or sym == "REF" or sym == "VAL":  # added ref and val
 		i = position(tx, id)
 		if i == 0:
 			error(11)
 		else:
-			if (table[i].kind != "variable" and table[i].kind != "function"  and table[
+			if (table[i].kind != "variable" and table[i].kind != "function" and table[
 				i].kind != "ref" and table[i].kind != "val"):
 				error(12)
 		tmpKind = table[i].kind
@@ -703,7 +723,7 @@ def statement(tx, level):
 			while con == 1:
 				getsym()
 				if (sym == "ident" and table[i].params[numParams] == True):
-					j = position(tx, id) #check for val or variable and ref down below
+					j = position(tx, id)  # check for val or variable and ref down below
 					if table[j].kind == "val" or table[j].kind == "variable":
 						gen("LDA", level - table[j].level, table[j].adr)
 					if table[j].kind == "ref":
@@ -774,7 +794,6 @@ def statement(tx, level):
 		generalExpression(tx, level)
 		gen("JPC", 0, cx1)
 	# end mod
-	elif sym == ""
 	# begin mod
 	elif sym == "FOR":
 		getsym()
@@ -793,7 +812,7 @@ def statement(tx, level):
 		gen("STO", level - table[i].level, table[i].adr)
 		if not ((sym == "TO") or (sym == "DOWNTO")):
 			error(28)
-		#saving the sym in a temp sym
+		# saving the sym in a temp sym
 		tempSym = sym
 		getsym()
 		expression(tx, level)
@@ -978,8 +997,6 @@ def term(tx, level):
 			#     altError(2)
 
 
-
-
 # -------------FACTOR--------------------------------------------------
 def factor(tx, level):  # begin mod
 	global sym, num, id;
@@ -989,13 +1006,13 @@ def factor(tx, level):  # begin mod
 			error(11)
 		if table[i].kind == "const":
 			gen("LIT", 0, table[i].value)
-			#checking for ref
+		# checking for ref
 		elif table[i].kind == "ref":
 			gen("LDI", level - table[i].level, table[i].adr)
-			#checking for val. Added it to the varible type
+		# checking for val. Added it to the varible type
 		elif table[i].kind == "variable" or table[i].kind == "val":
 			gen("LOD", level - table[i].level, table[i].adr)
-		#adding to through an error if it is a procedure or function in factor
+		# adding to through an error if it is a procedure or function in factor
 		elif table[i].kind == "procedure" or table[i].kind == "function":
 			error(21)
 		getsym()
@@ -1101,13 +1118,12 @@ def generalExpression(tx, level):  # changed from condition
 				#     altError(2)
 
 
-
 # -------------------MAIN PROGRAM------------------------------------------------------------#
 rword.append('BEGIN')
 rword.append('CALL')
 rword.append('CONST')
 rword.append('VAL')  # added val
-rword.append('REF')  #added ref
+rword.append('REF')  # added ref
 rword.append('LABEL')
 rword.append('GOTO')
 rword.append('HALT')
@@ -1135,6 +1151,7 @@ rword.append('WRITELN')
 rword.append('AND')
 rword.append('NOT')
 rword.append('OR')
+rword.appen('COBEGIN')
 
 ssym = {'+': "plus",
 		'-': "minus",
