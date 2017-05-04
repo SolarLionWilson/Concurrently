@@ -1,8 +1,8 @@
 #! C:\Program Files\Python26\pythonw
 # THOMAS E WILSON w879889 Compilers VAL and REF Assignment
-import sys, string
+import sys, string, threading, time
 
-norw = 28      #number of reserved words (mod)
+norw = 30      #number of reserved words (mod)
 txmax = 100   #length of identifier table
 nmax = 14      #max number of digits in number
 al = 10          #length of identifiers
@@ -14,6 +14,10 @@ rword = []
 table = []         #symbol table
 code = []         #code array
 stack = [0] * STACKSIZE     #interpreter stack
+thTable = [] * 50           #thread table
+
+
+
 global infile, outfile, ch, sym, id, num, linlen, kk, line, errorFlag, linelen, codeIndx, prevIndx, codeIndx0, funcMap #mod
 #-------------values to put in the symbol table------------------------------------------------------------
 class tableValue():                          
@@ -25,7 +29,21 @@ class tableValue():
         self.level = level
         self.params = []
         self.nest = 0
-
+#----------Class Thread-----------------------------------------------
+class Threads(threading.Thread):
+    def __init__(self,address,top,base,current_base,position ,stat_links, stack, original):
+        self.top = top
+        self.base = base
+        self.address = address
+        self.current_base = current_base
+        self.position = position
+        self.stat_links = stat_links
+        self.stack = stack
+        self.original = original
+    def run(self, tempCounter):
+        InterpretFork(tempCounter)
+    def sleep(seconds):
+        time.sleep(seconds)
 
 #----------commands to put in the array of assembly code-----------------------------------------------
 class Cmd():                            
@@ -66,6 +84,12 @@ def Interpret():
     top = 0
     base = 1
     pos = 0
+    total_threads = 0
+    counter = 0
+    running = 0
+
+    thread_array[] = 0
+
     stack[1] = 0
     stack[2] = 0
     stack[3] = 0
@@ -189,6 +213,40 @@ def Interpret():
             top += 1
             stack[top] = stack[top-1]
             continue
+        elif instr.cmd == "CBG":
+            continue
+        elif instr.cmd == "CND":
+            for counter in total_threads:
+                tempCounter = counter
+                thread_array[counter] = Thread()
+                thread_array[counter].start()
+                try:
+                    thread_array[counter].sleep(1)
+                except IntException as err:
+                    print("Thread was interrupted")
+            while True:
+                for counter in total_threads:
+                    if thread_array[counter].isAlive():
+                        running++
+                if running > 0:
+                    running = 0
+                else:
+                    break
+            total_threads = 0
+            thread_array = []
+            thTable = []
+            continue
+        elif FRK:
+
+
+            #FORK and INTERPRETER STACK!
+                
+
+            
+
+
+
+
         #end mod
     print "End PL/0"
 #--------------Error Messages----------------------------------------------------------
@@ -278,6 +336,8 @@ def error(num):
         print>>outfile, "Not value or reference"
     elif num == 41:
         print>>outfile, "Must be procedure"
+    elif num == 42:
+        print>>outfile, "COEND Expected"
     #end mod
     exit(0)
 #---------GET CHARACTER FUNCTION-------------------------------------------------------------------
@@ -615,6 +675,54 @@ def statement(tx, level):
         if sym != "END":
             error(17)
         getsym()
+    elif sym == "COBEGIN":  #ADDED COBEGIN/COEND for Threading
+        coCount = 0
+        gen(CBG, 0, 0)
+        while True:
+            getsym()
+            if sym == "ident":
+                i = position(tx, level)
+                if i == 0:
+                    error(11)
+                else:
+                    if table[i].kind != "procedure":
+                        error(41)
+                j = i + 1
+                getsym()
+                if sym == "lparen":
+                    con = 1
+                    numParams = 0 #parameter counter
+                    gen("INT", 0, 3)
+                    while con == 1:
+                        getsym()
+                        if (sym == "ident" and table[j].params[numParams] == True):
+                            k = position(tx, id)
+                            if table[k].kind == "val" or table[k].kind == "variable": 
+                                gen("LDA", level-table[k].level, table[k].adr)
+                            if table[k].kind == "ref":
+                                gen("LOD", level-table[k].level, table[k].adr)
+                            getsym()
+                        else:
+                            expression(tx, level)
+                        numParams+=1
+                        j += 1
+                        if sym != "comma":
+                            break
+                    gen("INT", 0, -(3+numParams))                
+                    if sym != "rparen":
+                        error(22)
+                    getsym()
+                gen("FRK", level-table[i].level, table[i].adr)
+            else:
+                error(14)
+            if sym != "semicolon":
+                break
+        gen("CND", 0, 0)
+        if sym != "COEND":
+            error(42)
+        else:
+            getsym()
+             #END COBEGIN/COEND
     elif sym == "WHILE":
         getsym()
         cx1 = codeIndx
@@ -754,6 +862,8 @@ def statement(tx, level):
         if (tempSym == "WRITELN"):
             gen("OPR", 0, 15)
         getsym() #end mod
+
+
 #--------------EXPRESSION--------------------------------------
 def expression(tx, level):
     global sym;
@@ -908,6 +1018,8 @@ rword.append('WRITELN')
 rword.append('AND')
 rword.append('NOT')
 rword.append('OR')
+rword.append('COBEGIN')
+rword.append('COEND')
 
 ssym = {'+' : "plus",
              '-' : "minus",
