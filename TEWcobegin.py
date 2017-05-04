@@ -29,15 +29,15 @@ class tableValue():
         self.level = level
         self.params = []
         self.nest = 0
-#----------Class Thread-----------------------------------------------
+#----------Class Threads-----------------------------------------------
 class Threads(threading.Thread):
-    def __init__(self,address,top,base,current_base,position ,stat_links, stack, original):
+    def __init__(self, value, top, base, current_base, position , stack, original, statLinks):
         self.top = top
         self.base = base
-        self.address = address
+        self.value = value
         self.current_base = current_base
         self.position = position
-        self.stat_links = stat_links
+        self.statLinks = statLinks
         self.stack = stack
         self.original = original
     def run(self, tempCounter):
@@ -205,21 +205,19 @@ def Interpret():
             if stack[top] == instr.statLinks:
                 pos = instr.value
             top -= 1
-        if pos == 0:
-            break
-        #begin mod
         #     CTS COMMAND
         elif instr.cmd == "CTS":
             top += 1
             stack[top] = stack[top-1]
             continue
-        elif instr.cmd == "CBG":
+                                     #BEGIN MODIFICATION for THREADS
+        elif instr.cmd == "CBG":    #CO Begin Instruction
             continue
-        elif instr.cmd == "CND":
+        elif instr.cmd == "CND":    #Co END Instruction
             for counter in total_threads:
                 tempCounter = counter
                 thread_array[counter] = Thread()
-                thread_array[counter].start()
+                thread_array[counter].start(tempCounter)
                 try:
                     thread_array[counter].sleep(1)
                 except IntException as err:
@@ -236,19 +234,153 @@ def Interpret():
             thread_array = []
             thTable = []
             continue
-        elif FRK:
+        elif instr.cmd == "FRK": #FORK INSTRUCTION and INTERPRETER STACK!
+            tempStack = [0] * STACKSIZE
 
-
-            #FORK and INTERPRETER STACK!
-                
-
-            
-
-
-
-
-        #end mod
+            for j in STACKSIZE:
+                tempStack[j] = stack[j]
+            thTable[total_threads] = Threads(instr.value, top, Base(instr.statLinks, base), base, pos, tempStack, stack, instr.statLinks)
+            total_threads+=1
+            continue
+        if pos == 0:
+            break
+                                    #END MODIFICATION FOR THREADS
     print "End PL/0"
+#--------------Function for INTERPRETTING Forks-----------BEGIN MODIFICATION------------
+def InterpretFork(thread_index):
+    top =  thTable[thread_index].top
+    stack = thTable[thread_index].stack
+    stack[top+1] = thTable[thread_index].base
+    stack[top+2] = thTable[thread_index].current_base
+    stack[top+3] = thTable[thread_index].position
+    base = t+1
+    pos = thTable[thread_index].value
+    original = thTable[thread_index].original  
+
+    while True:
+        instr = code[pos]
+        pos += 1
+        #       LIT COMMAND
+        if instr.cmd == "LIT":    
+            top += 1
+            stack[top] = int(instr.value)
+        #       OPR COMMAND
+        elif instr.cmd == "OPR":
+            if instr.value == 0:         #end
+                top = base - 1
+                base = stack[top+2]
+                pos = stack[top + 3]
+            elif instr.value == 1:         #unary minus
+                stack[top] = -stack[top]
+            elif instr.value == 2:         #addition
+                top -= 1
+                stack[top] = stack[top] + stack[top+1]
+            elif instr.value == 3:         #subtraction
+                top -= 1
+                stack[top] = stack[top] - stack[top+1]
+            elif instr.value == 4:         #multiplication
+                top -= 1
+                stack[top] = stack[top] * stack[top+1]
+            elif instr.value == 5:         #integer division
+                top -= 1
+                stack[top] = stack[top] / stack[top+1]
+            elif instr.value == 6:         #logical odd function
+                if stack[top] % 2 == 0:
+                    stack[top] = 1
+                else:
+                    stack[top] = 0
+            # case 7 n/a, used to debuge programs
+            elif instr.value == 8:        #test for equality if stack[top-1] = stack[top], replace pair with true, otherwise false
+                top -= 1
+                if stack[top] == stack[top+1]:
+                    stack[top] = 1
+                else:
+                    stack[top] = 0
+            elif instr.value == 9:         #test for inequality
+                top -= 1
+                if stack[top] != stack[top+1]:
+                    stack[top] = 1
+                else:
+                    stack[top] = 0
+            elif instr.value == 10:         #test for < (if stack[top-1] < stack[t])
+                top -= 1
+                if stack[top] < stack[top+1]:
+                    stack[top] = 1
+                else:
+                    stack[top] = 0
+            elif instr.value == 11:        #test for >=
+                top -= 1
+                if stack[top] >= stack[top+1]:
+                    stack[top] = 1
+                else:
+                    stack[top] = 0
+            elif instr.value == 12:        #test for >
+                top -= 1
+                if stack[top] > stack[top+1]:
+                    stack[top] = 1
+                else:
+                    stack[top] = 0
+            elif instr.value == 13:        #test for <=
+                top -= 1
+                if stack[top] <= stack[top+1]:
+                    stack[top] = 1
+                else:
+                    stack[top] = 0
+            elif instr.value == 14:        #write/print stack[top]  
+                print >>outfile, stack[top],
+                top -= 1
+            elif instr.value == 15:        #write/print a newline
+                print
+        #      LOD COMMAND
+        elif instr.cmd == "LOD":
+            top += 1
+            stack[top] = stack[Base(instr.statLinks, base) + instr.value]
+        #    STI COMMAND (begin mod)
+        elif instr.cmd == "STI":
+            stack[stack[Base(instr.statLinks, base) + instr.value]] = stack[top]
+            original[stack[Base(instr.statLinks, base) + instr.value]] = stack[top]
+            top -= 1
+        #    LDI COMMAND
+        elif instr.cmd == "LDI":
+            top += 1
+            stack[top] = stack[stack[Base(instr.statLinks, base) + instr.value]]
+        #    LDA COMMAND
+        elif instr.cmd == "LDA":
+            top += 1
+            stack[top] = Base(instr.statLinks, base) + instr.value #end mod
+        #    STO COMMAND
+        elif instr.cmd == "STO":
+            stack[Base(instr.statLinks, base) + instr.value] = stack[top]
+            top -= 1
+        #    CAL COMMAND
+        elif instr.cmd == "CAL": 
+            stack[top+1] = Base(instr.statLinks, base)
+            stack[top+2] = base
+            stack[top+3] = pos
+            base = top + 1
+            pos = instr.value
+        #    INT COMMAND
+        elif instr.cmd == "INT":
+            top = top + instr.value
+        #     JMP COMMAND
+        elif instr.cmd == "JMP":
+            pos = instr.value
+        #     JPC COMMAND
+        elif instr.cmd == "JPC":
+            if stack[top] == instr.statLinks:
+                pos = instr.value
+            top -= 1
+        #     CTS COMMAND
+        elif instr.cmd == "CTS":
+            top += 1
+            stack[top] = stack[top-1]
+            continue
+        if pos == 0:
+            break
+
+
+#--------------END MODIFICATION for Interpret Fork------------------------------------
+
 #--------------Error Messages----------------------------------------------------------
 def error(num):
     global errorFlag;
@@ -1041,7 +1173,6 @@ charcnt = 0
 whichChar = 0
 linelen = 0
 ch = ' '
-funcMap = {} #mod
 kk = al                
 a = []
 id= '     '
