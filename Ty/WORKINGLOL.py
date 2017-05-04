@@ -6,7 +6,7 @@
 # TODO do the LABEL function and the goto function. Figure out how enter works with label. How to save the line number to jump to the statement
 # TODO maybe look at the repeat function
 # ID:848348
-import sys, string
+import sys, string, threading, time
 
 labelMax = 5
 norw = 33  # number of reserved words (mod)
@@ -20,7 +20,7 @@ a = []
 chars = []
 rword = []
 table = []  # symbol table
-threadTable = [] #threadTable for threads
+thTable = [] * MAXTHREADS  # threadTable for threads
 code = []  # code array
 stack = [0] * STACKSIZE  # interpreter stack
 global infile, outfile, ch, sym, id, num, linlen, kk, line, errorFlag, linelen, codeIndx, prevIndx, codeIndx0
@@ -37,8 +37,9 @@ class tableValue():
 		self.params = []
 		self.nest = 0
 
-class threadStruct():
-	def __init__(self,address,top,base,currentBase,stak ,statLinks,orginalStack):
+
+class threadStruct(threading.Thread):
+	def __init__(self, address, top, base, currentBase, stak, statLinks, orginalStack):
 		self.address = address
 		self.top = top
 		self.base = base
@@ -46,6 +47,13 @@ class threadStruct():
 		self.position = position
 		self.stack = stack
 		self.orginalStack = orginalStack
+
+	def run(self, counter):
+		multiThreading(counter)
+
+	def sleep(seconds):
+		time.sleep(seconds)
+
 
 # ----------commands to put in the array of assembly code-----------------------------------------------
 class Cmd():
@@ -90,8 +98,14 @@ def Base(statLinks, base):
 	return b1
 
 
-def multiThreading(current):
-	return 0
+def multiThreading(count):
+	top = 0
+	base = 1
+	pos = 0
+	stack[1] = 0
+	stack[2] = 0
+	stack[3] = 0
+
 
 # -------------P-Code Interpreter-------------------------------------------------------
 def Interpret():
@@ -102,6 +116,12 @@ def Interpret():
 	stack[1] = 0
 	stack[2] = 0
 	stack[3] = 0
+	counter =0
+	total_threads = 0
+	running = 0
+
+	thread_array = []
+
 	while True:
 		instr = code[pos]
 		pos += 1
@@ -222,7 +242,34 @@ def Interpret():
 			top += 1
 			stack[top] = stack[top - 1]
 			continue
-			# end mod
+		# end mod
+		elif instr.cmd == "CBG":  # just to show in the pcode
+			continue
+		elif instr.cmd == "CND":  # co end
+			for i in range(counter,total_threads):
+				thread_array[i] = threading.Thread()
+				thread_array[i].start()
+				try:
+					thread_array[counter].sleep(1)
+				except IntException as err:
+					print("Thread was interrupted")
+			while True:
+				for i in range(counter,total_threads):
+					if thread_array[i].isAlive():
+						running = 1
+				if running > 0:
+					running = 0
+				else:
+					break
+			counter = 0
+			total_threads = 0
+			thread_array = []
+		elif instr.cmd == "FRK":
+			temp_stack = stack
+			
+			temp = threadStruct(instr.value, top, Base(instr.statLinks, base), base, pos, temp_stack, stack)
+			thTable.append(temp)
+			counter += 1
 	print "End PL/0"
 
 
@@ -768,6 +815,54 @@ def statement(tx, level):
 		if sym != "END":
 			error(17)
 		getsym()
+	# ADDED COBEGIN
+	elif sym == "COBEGIN":
+		counter = 0
+		gen("CBG", 0, 0)
+		while True:
+			getsym()
+			if(id == "COEND"):
+				getsym();
+				break;
+				
+			if (sym == "ident"):
+				i = position(tx, id)
+				if (i == 0):
+					error(11)
+				else:
+					if (table[i].kind != "procedure"):
+						error(15)
+				counter = 0
+				getsym()
+				if sym == "lparen":
+					con = 1
+					numParams = 0  # parameter counter
+					gen("INT", 0, 3)
+					while con == 1:
+						getsym()
+						if (sym == "ident" and table[i].params[numParams] == True):
+							k = position(tx, id)
+							if table[k].kind == "val" or table[k].kind == "variable":
+								gen("LDA", level - table[k].level, table[k].adr)
+							if table[k].kind == "ref":
+								gen("LOD", level - table[k].level, table[k].adr)
+							getsym()
+						else:
+							expression(tx, level)
+						numParams += 1
+						if sym != "comma":
+							break
+					gen("INT", 0, -(3 + numParams))
+					if sym != "rparen":
+						error(22)
+					getsym()
+				gen('FRK', level - table[i].level, table[i].adr)
+			else:
+				error(14)  # TODO CHANGE ERROR
+			if (sym != "semicolon"):
+				break
+			gen('CND', 0, 0)
+
 	elif sym == "WHILE":
 		getsym()
 		cx1 = codeIndx
@@ -1152,7 +1247,8 @@ rword.append('WRITELN')
 rword.append('AND')
 rword.append('NOT')
 rword.append('OR')
-rword.appen('COBEGIN')
+rword.append('COBEGIN')
+rword.append('COEND')
 
 ssym = {'+': "plus",
 		'-': "minus",
