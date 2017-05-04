@@ -1,5 +1,5 @@
 #! C:\Program Files\Python26\pythonw
-# THOMAS E WILSON w879889 Compilers VAL and REF Assignment
+# THOMAS E WILSON w879889 Compilers THREADING Assignment
 import sys, string, threading, time
 
 norw = 30      #number of reserved words (mod)
@@ -31,7 +31,10 @@ class tableValue():
         self.nest = 0
 #----------Class Threads-----------------------------------------------
 class Threads(threading.Thread):
+    count = 0
+    interpretted = 0
     def __init__(self, value, top, base, current_base, position , stack, original, statLinks):
+        threading.Thread.__init__(self)
         self.top = top
         self.base = base
         self.value = value
@@ -40,8 +43,11 @@ class Threads(threading.Thread):
         self.statLinks = statLinks
         self.stack = stack
         self.original = original
-    def run(self, tempCounter):
-        InterpretFork(tempCounter)
+        self.id = Threads.count
+        Threads.count+=1
+    def run(self):
+        InterpretFork(Threads.interpretted)
+        Threads.interpretted += 1
     def sleep(seconds):
         time.sleep(seconds)
 
@@ -80,6 +86,7 @@ def Base(statLinks, base):
     return b1
 #-------------P-Code Interpreter-------------------------------------------------------
 def Interpret():
+    global stack, STACKSIZE, thTable, code
     print >>outfile, "Start PL/0"
     top = 0
     base = 1
@@ -87,8 +94,8 @@ def Interpret():
     total_threads = 0
     counter = 0
     running = 0
-
-    thread_array[] = 0
+    zero = 0
+    thread_array = []
 
     stack[1] = 0
     stack[2] = 0
@@ -214,32 +221,35 @@ def Interpret():
         elif instr.cmd == "CBG":    #CO Begin Instruction
             continue
         elif instr.cmd == "CND":    #Co END Instruction
-            for counter in total_threads:
+            for counter in range(0, total_threads):
                 tempCounter = counter
-                thread_array[counter] = Thread()
-                thread_array[counter].start(tempCounter)
+                x = thTable[counter]
+                thread_array.append(x)
+                thread_array[counter].start()
                 try:
-                    thread_array[counter].sleep(1)
-                except IntException as err:
+                    thread_array[counter].sleep(0)
+                except:
                     print("Thread was interrupted")
             while True:
-                for counter in total_threads:
+                for counter in range(0, total_threads):
                     if thread_array[counter].isAlive():
-                        running++
+                        running+=1
                 if running > 0:
                     running = 0
                 else:
                     break
             total_threads = 0
+            counter = 0
             thread_array = []
             thTable = []
             continue
         elif instr.cmd == "FRK": #FORK INSTRUCTION and INTERPRETER STACK!
             tempStack = [0] * STACKSIZE
 
-            for j in STACKSIZE:
-                tempStack[j] = stack[j]
-            thTable[total_threads] = Threads(instr.value, top, Base(instr.statLinks, base), base, pos, tempStack, stack, instr.statLinks)
+            for counter in range(0, STACKSIZE):
+                tempStack[counter] = stack[counter]
+            x = Threads(instr.value, top, Base(instr.statLinks, base), base, pos, tempStack, stack, instr.statLinks)
+            thTable.append(x)
             total_threads+=1
             continue
         if pos == 0:
@@ -248,12 +258,13 @@ def Interpret():
     print "End PL/0"
 #--------------Function for INTERPRETTING Forks-----------BEGIN MODIFICATION------------
 def InterpretFork(thread_index):
+    global thTable, code
     top =  thTable[thread_index].top
     stack = thTable[thread_index].stack
     stack[top+1] = thTable[thread_index].base
     stack[top+2] = thTable[thread_index].current_base
     stack[top+3] = thTable[thread_index].position
-    base = t+1
+    base = top+1
     pos = thTable[thread_index].value
     original = thTable[thread_index].original  
 
@@ -809,17 +820,16 @@ def statement(tx, level):
         getsym()
     elif sym == "COBEGIN":  #ADDED COBEGIN/COEND for Threading
         coCount = 0
-        gen(CBG, 0, 0)
+        gen("CBG", 0, 0)
         while True:
             getsym()
             if sym == "ident":
-                i = position(tx, level)
+                i = position(tx, id)
                 if i == 0:
                     error(11)
                 else:
                     if table[i].kind != "procedure":
                         error(41)
-                j = i + 1
                 getsym()
                 if sym == "lparen":
                     con = 1
@@ -827,7 +837,7 @@ def statement(tx, level):
                     gen("INT", 0, 3)
                     while con == 1:
                         getsym()
-                        if (sym == "ident" and table[j].params[numParams] == True):
+                        if (sym == "ident" and table[i].params[numParams] == True):
                             k = position(tx, id)
                             if table[k].kind == "val" or table[k].kind == "variable": 
                                 gen("LDA", level-table[k].level, table[k].adr)
@@ -837,7 +847,6 @@ def statement(tx, level):
                         else:
                             expression(tx, level)
                         numParams+=1
-                        j += 1
                         if sym != "comma":
                             break
                     gen("INT", 0, -(3+numParams))                
